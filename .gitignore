@@ -1,0 +1,16 @@
+node_modules/
+.env
+.env.*
+!.env.example
+
+uploads/*
+!uploads/activities/
+uploads/activities/*
+.DS_Store
+npm-debug.log*
+
+# Organizer documents (private, never upload)
+private-uploads/
+
+# Local screenshots
+Claude outputs/
