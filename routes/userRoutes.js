@@ -5,12 +5,14 @@ const {
   getUserById,
   deleteUser,
   updateMyProfile,
+  verifyMyPassword,
 } = require('../controllers/userController');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
 // Users update their own profile; admins can manage all users.
+router.post('/me/verify-password', protect, verifyMyPassword);
 router.patch('/me', protect, updateMyProfile);
 router.use(protect, adminOnly);
 router.get('/', getUsers);

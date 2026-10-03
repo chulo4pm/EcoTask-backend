@@ -48,6 +48,32 @@ exports.getUserById = async (req, res) => {
   }
 };
 
+// POST /api/users/me/verify-password  body: { currentPassword }
+// Checked before the Settings page unlocks the edit form. Saving checks the password again.
+exports.verifyMyPassword = async (req, res) => {
+  try {
+    const currentPassword = String(req.body.currentPassword || '');
+    if (!currentPassword) {
+      return res.status(400).json({
+        message: 'Enter your current password.',
+        errors: { currentPassword: 'Current password is required.' },
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user || !(await bcrypt.compare(currentPassword, user.password))) {
+      return res.status(400).json({
+        message: 'Current password is incorrect.',
+        errors: { currentPassword: 'Current password is incorrect.' },
+      });
+    }
+
+    res.json({ message: 'Password confirmed.' });
+  } catch (error) {
+    res.status(500).json({ message: 'Could not check your password. Please try again.' });
+  }
+};
+
 // PATCH /api/users/me  body: { currentPassword, name?, phone?, newPassword? }
 // Volunteers update their own name, phone, or password.
 // - The current password is ALWAYS required, so a stolen login token alone can't take over the account.
