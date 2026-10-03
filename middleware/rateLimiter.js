@@ -67,3 +67,10 @@ exports.apiLimiter = createLimiter({
   message: 'Too many requests. Please slow down.',
   keyGenerator: userOrIpKey,
 });
+
+// Profile changes need the current password: limit guesses per account
+exports.profileUpdateLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000, max: 10,
+  message: 'Too many attempts. Please try again later.',
+  keyGenerator: userOrIpKey,
+});

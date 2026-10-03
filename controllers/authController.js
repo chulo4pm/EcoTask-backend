@@ -600,6 +600,12 @@ exports.updateMyProfile = async (req, res) => {
     const user = await User.findById(req.user._id);
     const emailChanged = email !== user.email;
 
+    // Only admins can change their email here. Volunteer and organizer emails
+    // were verified at sign-up and stay fixed.
+    if (emailChanged && user.role !== 'admin') {
+      return res.status(400).json({ message: "Email can't be changed.", errors: { email: "Email can't be changed." } });
+    }
+
     if (emailChanged) {
       if (!currentPassword || !(await bcrypt.compare(currentPassword, user.password))) {
         return res.status(400).json({

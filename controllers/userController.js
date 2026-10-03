@@ -2,6 +2,7 @@
 const User = require('../models/User');
 const Activity = require('../models/Activity');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const { validateProfileUpdate, sendValidationErrors } = require('../utils/validators');
 
 const toSafeUser = (user, activities = 0) => ({
@@ -47,49 +48,85 @@ exports.getUserById = async (req, res) => {
   }
 };
 
-// Allow the logged-in user to update their own name, email, phone, or password.
+// PATCH /api/users/me  body: { currentPassword, name?, phone?, newPassword? }
+// Volunteers update their own name, phone, or password.
+// - The current password is ALWAYS required, so a stolen login token alone can't take over the account.
+// - Email can't be changed here (it was verified when the account was created).
+// - A new password logs out every other device and returns a fresh token for this one.
 exports.updateMyProfile = async (req, res) => {
   try {
-    const { name, email, phone, newPassword } = req.body;
+    const currentPassword = String(req.body.currentPassword || '');
+    const name = req.body.name !== undefined ? String(req.body.name).trim().replace(/\s+/g, ' ') : undefined;
+    const phone = req.body.phone !== undefined ? String(req.body.phone).trim() : undefined;
+    const newPassword = req.body.newPassword ? String(req.body.newPassword) : '';
+
+    if (!currentPassword) {
+      return res.status(400).json({
+        message: 'Enter your current password to save changes.',
+        errors: { currentPassword: 'Current password is required.' },
+      });
+    }
 
     // Reject bad input before touching the database.
-    if (sendValidationErrors(res, validateProfileUpdate({ name, email, phone, newPassword }))) return;
+    if (sendValidationErrors(res, validateProfileUpdate({ name, phone, newPassword }))) return;
 
     const user = await User.findById(req.user._id);
-
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const normalizedEmail = email ? email.trim().toLowerCase() : undefined;
-
-    if (normalizedEmail && normalizedEmail !== user.email) {
-      const emailInUse = await User.findOne({
-        email: normalizedEmail,
-        _id: { $ne: user._id },
+    if (req.body.email !== undefined && String(req.body.email).trim().toLowerCase() !== user.email) {
+      return res.status(400).json({
+        message: "Email can't be changed.",
+        errors: { email: "Email can't be changed." },
       });
-
-      if (emailInUse) {
-        return res.status(409).json({
-          message: 'Email is already in use',
-          errors: { email: 'Email is already in use' },
-        });
-      }
     }
 
-    if (name) user.name = name.trim().replace(/\s+/g, ' ');
-    if (normalizedEmail) user.email = normalizedEmail;
-    if (phone !== undefined) user.phone = String(phone).trim();
-    if (newPassword) user.password = await bcrypt.hash(newPassword, 10);
+    if (!(await bcrypt.compare(currentPassword, user.password))) {
+      return res.status(400).json({
+        message: 'Current password is incorrect.',
+        errors: { currentPassword: 'Current password is incorrect.' },
+      });
+    }
+
+    if (newPassword && (await bcrypt.compare(newPassword, user.password))) {
+      return res.status(400).json({
+        message: 'New password must be different from your current one.',
+        errors: { newPassword: 'Use a different password.' },
+      });
+    }
+
+    const nameChanged = name !== undefined && name !== user.name;
+    const phoneChanged = phone !== undefined && phone !== (user.phone || '');
+    if (!nameChanged && !phoneChanged && !newPassword) {
+      return res.status(400).json({ message: 'No changes to save.' });
+    }
+
+    if (nameChanged) user.name = name;
+    if (phoneChanged) user.phone = phone;
+    if (newPassword) {
+      user.password = await bcrypt.hash(newPassword, 10);
+      user.passwordChangedAt = new Date();
+      // Every token issued before now stops working (logs out other devices).
+      user.tokensValidAfter = new Date(Date.now() - 1000);
+    }
 
     await user.save();
 
     res.json({
+      message: newPassword ? 'Profile saved. Other devices have been logged out.' : 'Profile saved.',
       _id: user._id,
       name: user.name,
       email: user.email,
       phone: user.phone,
       role: user.role,
+      passwordChangedAt: user.passwordChangedAt || null,
+      // New token for this device, since the old one was just invalidated.
+      ...(newPassword && {
+        token: jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+          expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+        }),
+      }),
     });
   } catch (error) {
     res.status(400).json({ message: error.message });
