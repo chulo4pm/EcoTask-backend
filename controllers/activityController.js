@@ -178,9 +178,38 @@ exports.getActivities = async (req, res) => {
       reportCounts = new Map(counts.map((item) => [String(item._id), item.count]));
     }
 
+    // Attendance totals per activity (organizer/admin only), so the Participation
+    // Record page can show "2 of 3 marked" without loading every activity's records.
+    let attendanceCounts = new Map();
+    if (role === 'admin' || role === 'organizer') {
+      const counts = await Participation.aggregate([
+        { $match: { activity: { $in: activities.map((a) => a._id) } } },
+        {
+          $group: {
+            _id: '$activity',
+            total: { $sum: 1 },
+            present: { $sum: { $cond: [{ $eq: ['$attendance', 'present'] }, 1, 0] } },
+            late: { $sum: { $cond: [{ $eq: ['$attendance', 'late'] }, 1, 0] } },
+            absent: { $sum: { $cond: [{ $eq: ['$attendance', 'absent'] }, 1, 0] } },
+          },
+        },
+      ]);
+      attendanceCounts = new Map(counts.map((item) => [String(item._id), {
+        total: item.total,
+        present: item.present,
+        late: item.late,
+        absent: item.absent,
+        unmarked: item.total - item.present - item.late - item.absent,
+      }]));
+    }
+    const emptyAttendance = { total: 0, present: 0, late: 0, absent: 0, unmarked: 0 };
+
     res.status(200).json(activities.map((activity) => ({
       ...formatActivity(activity),
-      ...(role !== 'volunteer' && { openReports: reportCounts.get(String(activity._id)) || 0 }),
+      ...(role !== 'volunteer' && {
+        openReports: reportCounts.get(String(activity._id)) || 0,
+        attendance: attendanceCounts.get(String(activity._id)) || emptyAttendance,
+      }),
     })));
   } catch (error) {
     res.status(500).json({ message: error.message });
