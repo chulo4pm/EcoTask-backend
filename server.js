@@ -58,6 +58,9 @@ app.use('/api/auth/forgot-password', forgotPasswordLimiter);
 app.use('/api/auth/verify-reset-code', resetPasswordLimiter);
 app.use('/api/auth/reset-password', resetPasswordLimiter);
 app.use('/api/users/me', profileUpdateLimiter);
+// Admin account settings: limit password guesses (GET /api/auth/me is not limited,
+// organizers use it to refresh their approval status).
+app.use('/api/auth/me', (req, res, next) => (req.method === 'GET' ? next() : profileUpdateLimiter(req, res, next)));
 
 // API route registration for all backend modules.
 app.use('/api/auth', require('./routes/authRoutes'));

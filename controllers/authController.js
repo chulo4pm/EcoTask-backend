@@ -408,10 +408,10 @@ exports.resendVerificationCode = async (req, res) => {
 
 /* ------------------------------------------
    FORGOT PASSWORD (email code)
-   Volunteers and organizers only. Admins change their password in Account Settings.
+   Volunteers, organizers, and admins.
    ------------------------------------------ */
 
-const RESET_ROLES = ['volunteer', 'organizer'];
+const RESET_ROLES = ['volunteer', 'organizer', 'admin'];
 
 const resetWaitSeconds = (user) => {
   if (!user.passwordResetSentAt) return 0;
@@ -582,53 +582,46 @@ const invalidateOldTokens = (user) => {
   user.tokensValidAfter = new Date(Date.now() - 1000);
 };
 
-// PUT /api/auth/me  body: { name, email, currentPassword }
-// currentPassword is required only when the email changes.
+// PUT /api/auth/me  body: { name, currentPassword }
+// Used by Admin → Account Settings. Only the name can change here; login emails are fixed.
+// The current password is always required (the page asks for it before unlocking the form).
 exports.updateMyProfile = async (req, res) => {
   try {
     const name = String(req.body.name ?? '').trim().replace(/\s+/g, ' ');
-    const email = String(req.body.email ?? '').trim().toLowerCase();
     const currentPassword = String(req.body.currentPassword || '');
 
-    const errors = {};
+    if (!currentPassword) {
+      return res.status(400).json({
+        message: 'Enter your current password to save changes.',
+        errors: { currentPassword: 'Current password is required.' },
+      });
+    }
+
     const nameError = validateName(name);
-    const emailError = validateEmail(email);
-    if (nameError) errors.name = nameError;
-    if (emailError) errors.email = emailError;
-    if (sendValidationErrors(res, errors)) return;
+    if (nameError) return sendValidationErrors(res, { name: nameError });
 
     const user = await User.findById(req.user._id);
-    const emailChanged = email !== user.email;
 
-    // Only admins can change their email here. Volunteer and organizer emails
-    // were verified at sign-up and stay fixed.
-    if (emailChanged && user.role !== 'admin') {
+    if (req.body.email !== undefined && String(req.body.email).trim().toLowerCase() !== user.email) {
       return res.status(400).json({ message: "Email can't be changed.", errors: { email: "Email can't be changed." } });
     }
 
-    if (emailChanged) {
-      if (!currentPassword || !(await bcrypt.compare(currentPassword, user.password))) {
-        return res.status(400).json({
-          message: 'Enter your current password to change your email.',
-          errors: { currentPassword: 'Current password is incorrect.' },
-        });
-      }
-      const taken = await User.exists({ email, _id: { $ne: user._id } });
-      if (taken) {
-        return res.status(409).json({ message: 'That email is already used by another account.', errors: { email: 'Email already in use.' } });
-      }
+    if (!(await bcrypt.compare(currentPassword, user.password))) {
+      return res.status(400).json({
+        message: 'Current password is incorrect.',
+        errors: { currentPassword: 'Current password is incorrect.' },
+      });
     }
 
-    if (name === user.name && !emailChanged) {
+    if (name === user.name) {
       return res.status(400).json({ message: 'No changes to save.' });
     }
 
     user.name = name;
-    user.email = email;
     await user.save();
-    res.json({ message: 'Profile updated.', user: toAuthResponse(user, false) });
+    res.json({ message: 'Profile saved.', user: toAuthResponse(user, false) });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: 'Could not save your profile. Please try again.' });
   }
 };
 

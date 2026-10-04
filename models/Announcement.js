@@ -26,7 +26,12 @@ const announcementSchema = new mongoose.Schema({
   datePosted: {
     type: Date,
     default: Date.now,
-  }
+  },
+  // Set when the admin changes the title, category, or message after posting.
+  editedAt: {
+    type: Date,
+    default: null,
+  },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Announcement', announcementSchema);
