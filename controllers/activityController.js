@@ -30,13 +30,20 @@ const parseTasks = (tasks) => {
   }
 };
 
+// Activity dates are saved as midnight UTC of the chosen day, so the ISO date is the
+// activity's calendar day. "Today" must be the local day where EcoTask is used
+// (the server runs in UTC, which is 8 hours behind the Philippines).
+const APP_TIMEZONE = process.env.APP_TIMEZONE || 'Asia/Manila';
+const activityDayKey = (dateValue) => new Date(dateValue).toISOString().slice(0, 10);
+const todayKey = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: APP_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date());
+
 const getDateStatus = (dateValue) => {
-  const activityDate = new Date(dateValue);
-  const today = new Date();
-  activityDate.setHours(0, 0, 0, 0);
-  today.setHours(0, 0, 0, 0);
-  if (activityDate < today) return 'completed';
-  if (activityDate.getTime() === today.getTime()) return 'ongoing';
+  const day = activityDayKey(dateValue);
+  const today = todayKey();
+  if (day < today) return 'completed';
+  if (day === today) return 'ongoing';
   return 'upcoming';
 };
 
@@ -330,8 +337,13 @@ exports.joinActivity = async (req, res) => {
       return res.status(404).json({ message: 'Activity not found' });
     }
 
-    if (getDateStatus(activity.date) === 'completed') {
+    // Registration closes when the activity day starts.
+    const dateStatus = getDateStatus(activity.date);
+    if (dateStatus === 'completed') {
       return res.status(400).json({ message: 'Completed activities cannot be joined' });
+    }
+    if (dateStatus === 'ongoing') {
+      return res.status(400).json({ message: 'Registration is closed. This activity is happening today.' });
     }
 
     const alreadyJoined = activity.participants.some(
