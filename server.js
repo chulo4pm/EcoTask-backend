@@ -43,7 +43,10 @@ app.get('/uploads/activities/:name', async (req, res) => {
 
 // Connect to Database
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('Connected in EcoTask Database'))
+  .then(() => {
+    console.log('Connected in EcoTask Database');
+    require('./utils/cleanupUnverified').startUnverifiedCleanup();
+  })
   .catch((err) => console.error('MongoDB Connection Error:', err));
 
 // Rate limiting (must come BEFORE the routes)

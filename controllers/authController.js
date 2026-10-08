@@ -112,7 +112,10 @@ exports.registerUser = async (req, res) => {
 
     // Check if user exists
     const userExists = await User.findOne({ email });
-    if (userExists) {
+    // An email that was never confirmed doesn't really "own" the address yet, so a
+    // volunteer who went back from the code screen can sign up again with new details.
+    const retryable = userExists && !userExists.isEmailVerified && userExists.role === 'volunteer' && !userExists.isSuspended;
+    if (userExists && !retryable) {
       return res.status(409).json({
         message: 'An account with this email already exists',
         errors: { email: 'An account with this email already exists' },
@@ -123,18 +126,28 @@ exports.registerUser = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Create user
-    const user = await User.create({
-      name,
-      email,
-      phone,
-      password: hashedPassword,
-      role: 'volunteer',
-      isEmailVerified: false,
-    });
+    let user;
+    let codeStillFresh = false;
+    if (retryable) {
+      codeStillFresh = resendWaitSeconds(userExists) > 0; // just sent one: keep it, don't email again
+      userExists.name = name;
+      userExists.phone = phone;
+      userExists.password = hashedPassword;
+      user = await userExists.save();
+    } else {
+      // Create user
+      user = await User.create({
+        name,
+        email,
+        phone,
+        password: hashedPassword,
+        role: 'volunteer',
+        isEmailVerified: false,
+      });
+    }
 
     // No token yet: the volunteer must enter the emailed code first.
-    const emailSent = await issueVerificationCode(user);
+    const emailSent = codeStillFresh ? true : await issueVerificationCode(user);
     res.status(201).json({
       message: emailSent
         ? `We sent a 6-digit code to ${user.email}. Enter it to activate your account.`
@@ -165,7 +178,9 @@ exports.registerOrganizer = async (req, res) => {
     }
 
     const userExists = await User.findOne({ email });
-    if (userExists) {
+    // Same as volunteers: an unconfirmed application can be re-submitted.
+    const retryable = userExists && !userExists.isEmailVerified && userExists.role === 'organizer' && !userExists.isSuspended;
+    if (userExists && !retryable) {
       removeUploadedFiles(files);
       return res.status(409).json({
         message: 'An account with this email already exists',
@@ -175,20 +190,35 @@ exports.registerOrganizer = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const user = await User.create({
-      name,
-      email,
-      phone,
-      password: hashedPassword,
-      role: 'organizer',
-      organizationName,
-      organizerStatus: 'pending',
-      organizerDocuments: toStoredDocuments(files),
-      isEmailVerified: false,
-    });
+    let user;
+    let codeStillFresh = false;
+    if (retryable) {
+      codeStillFresh = resendWaitSeconds(userExists) > 0;
+      // Drop the documents from the abandoned attempt, keep the new ones.
+      removeUploadedFiles((userExists.organizerDocuments || []).map((d) => ({ filename: d.fileName })));
+      userExists.name = name;
+      userExists.phone = phone;
+      userExists.password = hashedPassword;
+      userExists.organizationName = organizationName;
+      userExists.organizerStatus = 'pending';
+      userExists.organizerDocuments = toStoredDocuments(files);
+      user = await userExists.save();
+    } else {
+      user = await User.create({
+        name,
+        email,
+        phone,
+        password: hashedPassword,
+        role: 'organizer',
+        organizationName,
+        organizerStatus: 'pending',
+        organizerDocuments: toStoredDocuments(files),
+        isEmailVerified: false,
+      });
+    }
 
     // Organizer must confirm their email first, then wait for admin approval.
-    const emailSent = await issueVerificationCode(user);
+    const emailSent = codeStillFresh ? true : await issueVerificationCode(user);
     res.status(201).json({
       message: emailSent
         ? `We sent a 6-digit code to ${user.email}. Verify your email, then wait for admin approval.`
