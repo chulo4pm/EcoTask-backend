@@ -125,6 +125,7 @@ exports.updateAttendance = async (req, res) => {
       type: 'attendance_marked',
       title: 'Attendance marked',
       message: `You were marked ${attendance} for ${record.activity.title}.`,
+      activity: record.activity._id,
     });
     await record.populate('user', 'name email phone');
     res.json(record);

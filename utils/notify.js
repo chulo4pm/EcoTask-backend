@@ -5,13 +5,13 @@ const User = require('../models/User');
 
 const clip = (text, max) => String(text || '').slice(0, max);
 
-// userIds: array of ids (ObjectId or string). payload: { type, title, message }
-const notifyUsers = async (userIds, { type, title, message = '' }) => {
+// userIds: array of ids (ObjectId or string). payload: { type, title, message, activity? }
+const notifyUsers = async (userIds, { type, title, message = '', activity = null }) => {
   try {
     const unique = [...new Set((userIds || []).filter(Boolean).map((id) => String(id)))];
     if (unique.length === 0) return;
     await Notification.insertMany(
-      unique.map((user) => ({ user, type, title: clip(title, 150), message: clip(message, 500) })),
+      unique.map((user) => ({ user, type, title: clip(title, 150), message: clip(message, 500), activity })),
       { ordered: false }
     );
   } catch (err) {

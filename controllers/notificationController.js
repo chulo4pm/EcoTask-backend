@@ -6,6 +6,7 @@ const toResponse = (n) => ({
   type: n.type,
   title: n.title,
   message: n.message,
+  activity: n.activity ? String(n.activity) : null,
   read: Boolean(n.readAt),
   createdAt: n.createdAt,
 });

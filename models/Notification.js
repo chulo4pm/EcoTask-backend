@@ -7,6 +7,7 @@ const notificationSchema = new mongoose.Schema({
     type: String,
     enum: [
       'announcement',          // volunteer: admin posted an announcement
+      'activity_published',    // volunteer: an organizer posted a new activity
       'activity_updated',      // volunteer: an activity they joined was changed
       'activity_cancelled',    // volunteer: an activity they joined was cancelled
       'attendance_marked',     // volunteer: organizer marked their attendance
@@ -19,6 +20,8 @@ const notificationSchema = new mongoose.Schema({
   },
   title: { type: String, required: true, maxlength: 150 },
   message: { type: String, default: '', maxlength: 500 },
+  // The activity this is about (lets the bell open the right activity). Null when not about one.
+  activity: { type: mongoose.Schema.Types.ObjectId, ref: 'Activity', default: null },
   readAt: { type: Date, default: null },
   // Old notifications clean themselves up after 60 days.
   createdAt: { type: Date, default: Date.now, expires: 60 * 24 * 60 * 60 },

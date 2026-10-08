@@ -3,7 +3,7 @@
 const Activity = require('../models/Activity');
 const Participation = require('../models/Participation');
 const Report = require('../models/Report');
-const { notifyUsers } = require('../utils/notify');
+const { notifyUsers, notifyVolunteers } = require('../utils/notify');
 const fs = require('fs/promises');
 const path = require('path');
 const { BUCKETS, deleteFile } = require('../utils/fileStore');
@@ -233,6 +233,13 @@ exports.createActivity = async (req, res) => {
       coverImage: req.file ? `/uploads/activities/${req.file.filename}` : null,
     });
 
+    notifyVolunteers({
+      type: 'activity_published',
+      title: 'New activity published',
+      message: activity.title,
+      activity: activity._id,
+    });
+
     await activity.populate('organizer', 'name organizationName');
     res.status(201).json(formatActivity(activity));
   } catch (error) {
@@ -280,6 +287,7 @@ exports.updateActivity = async (req, res) => {
         type: 'activity_updated',
         title: 'Activity updated',
         message: `${previousTitle} was updated (${changed.map((f) => CHANGE_LABELS[f]).join(', ')}). Check the latest details.`,
+        activity: activity._id,
       });
     }
 
@@ -346,6 +354,7 @@ exports.joinActivity = async (req, res) => {
         type: 'volunteer_joined',
         title: 'New volunteer joined',
         message: `${req.user.name} joined ${activity.title} (${activity.participants.length}/${activity.volunteerLimit}).`,
+        activity: activity._id,
       });
     }
 
