@@ -1,6 +1,7 @@
 // Controller for creating, listing, and managing announcements shown to users.
 const mongoose = require('mongoose');
 const Announcement = require('../models/Announcement');
+const { notifyVolunteers } = require('../utils/notify');
 
 const populateAuthor = (query) => query.populate('author', 'name');
 
@@ -57,6 +58,11 @@ exports.createAnnouncement = async (req, res) => {
 
     const announcement = await Announcement.create({ ...data, author: req.user._id });
     await announcement.populate('author', 'name');
+    notifyVolunteers({
+      type: 'announcement',
+      title: announcement.title,
+      message: announcement.description || announcement.message,
+    });
     res.status(201).json(announcement);
   } catch (error) {
     res.status(500).json({ message: 'Could not post the announcement.' });

@@ -2,6 +2,7 @@
 // Organizers can only manage records for activities they own.
 const Participation = require('../models/Participation');
 const Activity = require('../models/Activity');
+const { notifyUsers } = require('../utils/notify');
 
 // Checks that the logged-in organizer owns the activity. Admins may view (read-only).
 const canManageActivity = (user, activity) => (
@@ -120,6 +121,11 @@ exports.updateAttendance = async (req, res) => {
 
     record.attendance = attendance;
     await record.save();
+    notifyUsers([record.user], {
+      type: 'attendance_marked',
+      title: 'Attendance marked',
+      message: `You were marked ${attendance} for ${record.activity.title}.`,
+    });
     await record.populate('user', 'name email phone');
     res.json(record);
   } catch (error) {

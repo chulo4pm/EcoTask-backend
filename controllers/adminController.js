@@ -5,6 +5,7 @@ const fs = require('fs');
 const User = require('../models/User');
 const Activity = require('../models/Activity');
 const Participation = require('../models/Participation');
+const { notifyUsers } = require('../utils/notify');
 const { DOCUMENT_DIR } = require('../middleware/documentUpload');
 const { BUCKETS, findFile, openDownloadStream, deleteFile } = require('../utils/fileStore');
 
@@ -96,6 +97,11 @@ exports.approveOrganizer = async (req, res) => {
     organizer.reviewedBy = req.user._id;
     organizer.reviewedAt = new Date();
     await organizer.save();
+    notifyUsers([organizer._id], {
+      type: 'organizer_approved',
+      title: 'Application approved',
+      message: 'Your organizer application was approved. You can now create activities.',
+    });
 
     res.json({ message: `${organizer.organizationName || organizer.name} approved.`, organizer: toOrganizerSummary(organizer) });
   } catch (error) {
@@ -122,6 +128,11 @@ exports.rejectOrganizer = async (req, res) => {
     organizer.reviewedBy = req.user._id;
     organizer.reviewedAt = new Date();
     await organizer.save();
+    notifyUsers([organizer._id], {
+      type: 'organizer_rejected',
+      title: 'Application rejected',
+      message: `Your organizer application was rejected. Reason: ${reason}`,
+    });
 
     res.json({ message: `${organizer.organizationName || organizer.name} rejected.`, organizer: toOrganizerSummary(organizer) });
   } catch (error) {

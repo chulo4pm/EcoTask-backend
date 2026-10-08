@@ -13,6 +13,7 @@ const {
 const { removeUploadedFiles, toStoredDocuments } = require('../middleware/documentUpload');
 const crypto = require('crypto');
 const { sendVerificationCodeEmail, sendPasswordResetCodeEmail } = require('../utils/sendEmail');
+const { notifyAdmins } = require('../utils/notify');
 
 /* ------------------------------------------
    EMAIL VERIFICATION HELPERS
@@ -267,6 +268,12 @@ exports.resubmitOrganizerDocuments = async (req, res) => {
     user.reviewedBy = null;
     await user.save();
 
+    notifyAdmins({
+      type: 'organizer_application',
+      title: 'Organizer application resubmitted',
+      message: `${user.organizationName || user.name} sent new documents for review.`,
+    });
+
     res.json({ message: 'Documents resubmitted. Please wait for admin approval.', user: toAuthResponse(user, false) });
   } catch (error) {
     removeUploadedFiles(files);
@@ -398,6 +405,15 @@ exports.verifyEmail = async (req, res) => {
     user.emailVerificationExpires = null;
     user.emailVerificationAttempts = 0;
     await user.save();
+
+    // An organizer only reaches the admin's review queue once their email is confirmed.
+    if (user.role === 'organizer' && user.organizerStatus === 'pending') {
+      notifyAdmins({
+        type: 'organizer_application',
+        title: 'New organizer application',
+        message: `${user.organizationName || user.name} is waiting for review.`,
+      });
+    }
 
     res.json({ message: 'Email verified!', ...toAuthResponse(user) });
   } catch (error) {

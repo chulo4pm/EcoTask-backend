@@ -3,6 +3,7 @@
 const Activity = require('../models/Activity');
 const Participation = require('../models/Participation');
 const Report = require('../models/Report');
+const { notifyUsers } = require('../utils/notify');
 const fs = require('fs/promises');
 const path = require('path');
 const { BUCKETS, deleteFile } = require('../utils/fileStore');
@@ -259,11 +260,28 @@ exports.updateActivity = async (req, res) => {
       });
     }
 
+    // Volunteers care about changes to what/when/where, not description edits.
+    const CHANGE_LABELS = { title: 'title', date: 'date', time: 'time', location: 'location', meetingPlace: 'meeting place' };
+    const changed = Object.keys(CHANGE_LABELS).filter((field) => {
+      if (updates[field] === undefined) return false;
+      if (field === 'date') return startOfDay(updates.date).getTime() !== startOfDay(activity.date).getTime();
+      return String(updates[field]) !== String(activity[field] ?? '');
+    });
+    const previousTitle = activity.title;
+
     const oldImage = activity.coverImage;
     Object.assign(activity, updates);
     if (req.file) activity.coverImage = `/uploads/activities/${req.file.filename}`;
     await activity.save();
     if (req.file && oldImage !== activity.coverImage) await removeStoredImage(oldImage);
+
+    if (changed.length > 0) {
+      notifyUsers(activity.participants, {
+        type: 'activity_updated',
+        title: 'Activity updated',
+        message: `${previousTitle} was updated (${changed.map((f) => CHANGE_LABELS[f]).join(', ')}). Check the latest details.`,
+      });
+    }
 
     await activity.populate('participants', 'name email phone');
     await activity.populate('organizer', 'name organizationName');
@@ -279,7 +297,13 @@ exports.deleteActivity = async (req, res) => {
     const activity = await findOwnedActivity(req, res);
     if (!activity) return;
 
+    const joinedVolunteers = [...activity.participants];
     await Activity.deleteOne({ _id: activity._id });
+    notifyUsers(joinedVolunteers, {
+      type: 'activity_cancelled',
+      title: 'Activity cancelled',
+      message: `${activity.title} has been cancelled by the organizer.`,
+    });
     await Participation.deleteMany({ activity: activity._id });
     await Report.deleteMany({ activity: activity._id });
     await removeStoredImage(activity.coverImage);
@@ -316,6 +340,14 @@ exports.joinActivity = async (req, res) => {
     activity.participants.push(req.user._id);
     await activity.save();
     await Participation.create({ activity: activity._id, user: req.user._id });
+
+    if (activity.organizer) {
+      notifyUsers([activity.organizer], {
+        type: 'volunteer_joined',
+        title: 'New volunteer joined',
+        message: `${req.user.name} joined ${activity.title} (${activity.participants.length}/${activity.volunteerLimit}).`,
+      });
+    }
 
     res.status(200).json(formatActivity(activity));
   } catch (error) {
