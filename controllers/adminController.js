@@ -191,6 +191,74 @@ exports.assignActivityOrganizer = async (req, res) => {
    ORGANIZER ACCOUNT MANAGEMENT
    ------------------------------------------ */
 
+// ---------- Volunteer accounts (User Management → Volunteers tab) ----------
+
+const findVolunteer = async (id, res) => {
+  if (!isValidId(id)) {
+    res.status(404).json({ message: 'Volunteer not found' });
+    return null;
+  }
+  const volunteer = await User.findOne({ _id: id, role: 'volunteer' });
+  if (!volunteer) res.status(404).json({ message: 'Volunteer not found' });
+  return volunteer;
+};
+
+const toVolunteerSummary = (user) => ({
+  _id: user._id,
+  name: user.name,
+  email: user.email,
+  status: user.isSuspended ? 'Suspended' : 'Active',
+  isSuspended: !!user.isSuspended,
+  suspendedReason: user.suspendedReason || '',
+  suspendedAt: user.suspendedAt || null,
+});
+
+// PATCH /api/admin/volunteers/:id/suspend  body: { reason }
+// The volunteer can't log in or use EcoTask until reactivated. Their records are kept.
+exports.suspendVolunteer = async (req, res) => {
+  try {
+    const reason = String(req.body.reason || '').trim();
+    if (reason.length < 5 || reason.length > 500) {
+      return res.status(400).json({
+        message: 'Please give a reason (5-500 characters). The volunteer will see it.',
+        errors: { reason: 'Reason required.' },
+      });
+    }
+
+    const volunteer = await findVolunteer(req.params.id, res);
+    if (!volunteer) return;
+    if (volunteer.isSuspended) return res.status(400).json({ message: 'This volunteer is already suspended.' });
+
+    Object.assign(volunteer, {
+      isSuspended: true,
+      suspendedReason: reason,
+      suspendedAt: new Date(),
+      suspendedBy: req.user._id,
+    });
+    await volunteer.save();
+
+    res.json({ message: `${volunteer.name} suspended.`, volunteer: toVolunteerSummary(volunteer) });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// PATCH /api/admin/volunteers/:id/reactivate
+exports.reactivateVolunteer = async (req, res) => {
+  try {
+    const volunteer = await findVolunteer(req.params.id, res);
+    if (!volunteer) return;
+    if (!volunteer.isSuspended) return res.status(400).json({ message: 'This volunteer is not suspended.' });
+
+    Object.assign(volunteer, { isSuspended: false, suspendedReason: '', suspendedAt: null, suspendedBy: null });
+    await volunteer.save();
+
+    res.json({ message: `${volunteer.name} reactivated.`, volunteer: toVolunteerSummary(volunteer) });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 const findOrganizer = async (id, res) => {
   if (!isValidId(id)) {
     res.status(404).json({ message: 'Organizer not found' });

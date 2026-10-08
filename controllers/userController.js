@@ -12,7 +12,10 @@ const toSafeUser = (user, activities = 0) => ({
   phone: user.phone,
   role: user.role,
   activities,
-  status: 'Active',
+  status: user.isSuspended ? 'Suspended' : 'Active',
+  isSuspended: !!user.isSuspended,
+  suspendedReason: user.suspendedReason || '',
+  suspendedAt: user.suspendedAt || null,
   createdAt: user.createdAt,
 });
 

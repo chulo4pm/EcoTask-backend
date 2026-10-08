@@ -11,6 +11,8 @@ const {
   suspendOrganizer,
   reactivateOrganizer,
   deleteOrganizer,
+  suspendVolunteer,
+  reactivateVolunteer,
 } = require('../controllers/adminController');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
 
@@ -27,6 +29,10 @@ router.get('/organizers/:id', getOrganizerDetails);
 router.patch('/organizers/:id/suspend', suspendOrganizer);
 router.patch('/organizers/:id/reactivate', reactivateOrganizer);
 router.delete('/organizers/:id', deleteOrganizer);
+
+// Volunteer account management (User Management → Volunteers tab)
+router.patch('/volunteers/:id/suspend', suspendVolunteer);
+router.patch('/volunteers/:id/reactivate', reactivateVolunteer);
 
 router.patch('/activities/:id/visibility', setActivityVisibility);
 router.patch('/activities/:id/organizer', assignActivityOrganizer);
