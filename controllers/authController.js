@@ -37,6 +37,10 @@ const resendWaitSeconds = (user) => {
   return Math.max(0, Math.ceil(RESEND_COOLDOWN_SECONDS - elapsed));
 };
 
+// Seconds until a code expires (0 = already expired / none). The frontend shows this as a countdown.
+const expiresInSeconds = (date) =>
+  date ? Math.max(0, Math.ceil((new Date(date).getTime() - Date.now()) / 1000)) : 0;
+
 // Creates a new 6-digit code, saves its hash, and emails it.
 // Returns true if the email was sent, false if sending failed.
 const issueVerificationCode = async (user) => {
@@ -63,6 +67,7 @@ const verificationPayload = (user, emailSent) => ({
   role: user.role,
   emailSent,
   resendAvailableIn: resendWaitSeconds(user),
+  expiresIn: expiresInSeconds(user.emailVerificationExpires),
 });
 
 // Generate JWT
@@ -381,7 +386,7 @@ exports.resendVerificationCode = async (req, res) => {
     const generic = { message: 'If this account still needs verification, a new code has been sent.' };
     const user = await User.findOne({ email });
     if (!user || user.isEmailVerified || user.isSuspended) {
-      return res.json({ ...generic, resendAvailableIn: RESEND_COOLDOWN_SECONDS });
+      return res.json({ ...generic, resendAvailableIn: RESEND_COOLDOWN_SECONDS, expiresIn: CODE_TTL_MINUTES * 60 });
     }
 
     const wait = resendWaitSeconds(user);
@@ -400,7 +405,7 @@ exports.resendVerificationCode = async (req, res) => {
         resendAvailableIn: resendWaitSeconds(user),
       });
     }
-    res.json({ message: `A new code was sent to ${user.email}.`, resendAvailableIn: RESEND_COOLDOWN_SECONDS });
+    res.json({ message: `A new code was sent to ${user.email}.`, resendAvailableIn: RESEND_COOLDOWN_SECONDS, expiresIn: CODE_TTL_MINUTES * 60 });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -431,6 +436,7 @@ exports.forgotPassword = async (req, res) => {
       message: `If an EcoTask account uses ${email}, we sent a 6-digit reset code to it.`,
       email,
       resendAvailableIn: RESEND_COOLDOWN_SECONDS,
+      expiresIn: CODE_TTL_MINUTES * 60,
     };
 
     const user = await User.findOne({ email });
@@ -444,6 +450,7 @@ exports.forgotPassword = async (req, res) => {
         message: `Please wait ${wait}s before requesting another code.`,
         retryAfter: wait,
         resendAvailableIn: wait,
+        expiresIn: expiresInSeconds(user.passwordResetExpires),
         email,
       });
     }
@@ -524,6 +531,7 @@ exports.verifyResetCode = async (req, res) => {
     res.json({
       message: 'Code confirmed. Choose your new password.',
       expiresAt: user.passwordResetExpires,
+      expiresIn: expiresInSeconds(user.passwordResetExpires),
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
